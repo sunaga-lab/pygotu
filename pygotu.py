@@ -1,0 +1,250 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import sys, os, time
+import serial
+import datetime, time
+from struct import pack, unpack
+
+
+devname = '/dev/ttyACM0'
+
+def hexdumps(s):
+    return " ".join("{:02X}".format(ord(ch)) for ch in s)
+
+
+
+class GTDev:
+    def __init__(self, devname, debug = False):
+        self.devname = devname
+        self.dev = serial.Serial(devname, 9600)
+        self.dev.flush()
+        self.debug = debug
+
+    def write_cmd(self, cmd1, cmd2):
+        assert len(cmd1) == 8
+        assert len(cmd2) == 8
+        cs = 0
+        for ch in cmd1 + cmd2[:7]:
+            cs += ord(ch)
+        cs = cs & 0xff
+        cs = ((cs^0xff) + 0x01) & 0xff
+        cmd2 = cmd2[:7] + chr(cs)
+        if self.debug:
+            print "Send1&2: ", hexdumps(cmd1 + cmd2)
+        self.dev.write(cmd1 + cmd2)
+        #print "Send2: ", hexdumps(cmd2)
+        #self.dev.write(cmd2)
+
+    def read(self, sz):
+        result = self.dev.read(sz)
+        if self.debug:
+            print "Read: ", hexdumps(result)
+        return result
+
+    def read_resp(self, fmt = None):
+        recv = self.read(3)
+        if recv[0] != "\x93":
+            raise Exception()
+        m, sz = unpack(">cH", recv)
+        if self.debug:
+            print "Reading", sz, "bytes..."
+
+        resp = self.read(sz)
+        if fmt:
+            return unpack(">" + fmt, resp)
+        else:
+            return resp
+
+
+    def nmea_switch(self, mode):
+        mch = ["\x00", "\x01", "\x02", "\x03"][mode]
+        self.write_cmd(
+            "\x93\x01\x01" + mch + "\x00\x00\x00\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        self.read(1)
+
+    def identify(self):
+        self.write_cmd(
+            "\x93\x0a\x00\x00\x00\x00\x00\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        serial, v_maj, v_min, model, v_lib = self.read_resp(fmt = "IbbHH")
+        if self.debug:
+            print "Serial:", serial
+            print "Ver:", v_maj, v_min
+            print "Model:", model
+            print "USBlib:", v_lib
+
+    def count(self):
+        self.write_cmd(
+            "\x93\x0b\x03\x00\x1d\x00\x00\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        n1, n2 = self.read_resp(fmt = "Hb")
+        num = n1*256 + n2
+        if self.debug:
+            print "Num DP:", num, "(", n1, n2, ")"
+        return num
+
+    def flash_read(self, pos = 0):
+        chpos = pack(">I", pos)        
+        self.write_cmd(
+            "\x93\x05\x07\x10\x00\x04\x03" + chpos[1],
+            chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
+
+
+    def all_records(self):
+        rpos = 0
+        buf = ""
+        num_rec_read = 0
+        num_rec_all = self.count()
+    
+        RECSIZE = 0x20
+        while True:
+            rpos += 1
+            buf = self.flash_read(rpos * 0x1000)
+            for i in range(len(buf) / RECSIZE):
+                yield GTRecord(num_rec_read, buf[i*RECSIZE:(i+1)*RECSIZE])
+                num_rec_read += 1
+                if num_rec_read >= num_rec_all:
+                    if self.debug: print "End by count:", num_rec_all
+                    return
+            if self.debug: print "End RECLOOP"
+
+    def all_tracks(self):
+        idx = 0
+        curlist = []
+        for rec in self.all_records():
+            if rec.kind == 'WP':
+                curlist.append(rec)
+            if rec.kind == 'LOG' and rec.msg == 'RESET COUNTER':
+                if curlist:
+                    yield GTTrack(idx, curlist)
+                    idx += 1
+                    curlist = []
+        if curlist:
+            yield GTTrack(idx, curlist)
+
+
+class GTTrack:
+    def __init__(self, idx, reclist):
+        self.idx = idx
+        self.records = list(reclist)
+
+    @property
+    def first_point(self):
+        return self.records[0]
+
+    @property
+    def last_point(self):
+        return self.records[len(self.records) - 1]
+    
+    @property
+    def first_time(self):
+        return self.first_point.localtime
+
+    @property
+    def last_time(self):
+        return self.last_point.localtime
+
+    @property
+    def num_points(self):
+        return len(self.records)
+    
+    def __str__(self):
+        return "{0.idx}: {0.first_time:%Y/%m/%d %H:%M:%S} - {0.last_time:%Y/%m/%d %H:%M:%S} points:[{0.num_points}]".format(self)
+
+class GTRecord:
+    def __init__(self, idx, s):
+        self.idx = idx
+        self.s = s
+        flag, ym, dhm, ms = unpack(">BBHH", self.s[0x00:0x06])
+        self.plr = unpack(">H", self.s[0x1e:0x20])
+        self.flag = flag
+        self.year = (ym >> 4) + 2000
+        self.month = (ym & 0x0F) % 13
+        self.day = dhm >> 11
+        if self.day <= 0:
+            self.day = 1
+        self.hour = ((dhm >> 6) & 0b00011111) %24
+        self.minutes = (dhm & 0b00111111) % 60
+        self.sec = int(ms / 1000) % 60
+        self.ms = ms % 1000
+
+        self.datetime = datetime.datetime(self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms)
+
+        self.msg = ""
+
+        if flag == 0xF1:
+            self.parse_device_log()
+        elif flag == 0xF5:
+            self.parse_heartbeat()
+        else:
+            self.parse_waypoint()
+
+    @property
+    def localtime(self):
+        return self.datetime - datetime.timedelta(seconds = time.timezone)
+    
+    def parse_waypoint(self):
+        self.kind = "WP"
+        (ae, self.r_ele_p, self.r_lat, self.r_lon, self.r_ele_gps, self.r_speed, self.r_course, self.f2) = unpack(">HiIIiHHH", self.s[0x06:0x1e])
+        
+        self.unk1 = (ae >> 12)
+        self.ehpe = (ae & 0b0000111111111111) / 10.0 # in m
+
+        self.lon = self.r_lon / 10000000.0 # 
+        self.lat = self.r_lat / 10000000.0 #
+        self.ele = self.r_ele_p / 100.0 # in m
+        self.ele_gps = self.r_ele_gps / 100.0 # in m
+        self.speed = (self.r_speed / 100.0) / 1000.0 * 3600.0 # km/h
+        self.course = self.r_course / 100.0 # degree
+        self.sat = self.f2 & 0b00001111 # num of sat
+        
+        
+        self.flagopts = set()
+        
+        FLAGNAMES = ["U0", "U1", "WP", "U3", "NDI", "TSTOP", "TSTART", "U7"]
+        for bit in range(8):
+            if self.flag & (1 << bit):
+                self.flagopts.add(FLAGNAMES[bit])
+        
+        self.fopts = ",".join(self.flagopts)
+        
+        self.desc = "WP LATLON:({0.lat}, {0.lon}) ele:{0.ele} speed:{0.speed} uf={0.unk1:b},{0.f2:b} ehpe={0.ehpe} {0.fopts}".format(self)
+
+
+    def parse_device_log(self):
+        self.kind = "LOG"
+        self.msg = self.s[0x06:0x1e].replace('\x00', '').strip()
+        self.desc = "LOG {0.msg}".format(self)
+
+    def parse_unknown(self):
+        self.kind = "UNK"
+        self.desc = "UNK {0.flag}".format(self)
+
+    def __str__(self):
+        return "{0.datetime:%Y/%m/%d %H:%M:%S} {0.desc}".format(self)
+
+def test():
+    dev = GTDev(devname, debug = False)
+
+    dev.identify()
+    n = dev.count()
+ 
+    #for track in dev.all_tracks():
+    #    print track
+
+    for rec in dev.all_records():
+        print "- ", rec.idx, "/", n, ":", rec
+
+def main():
+    test()
+
+if __name__ == '__main__':
+    main()
+
