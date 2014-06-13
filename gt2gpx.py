@@ -6,6 +6,8 @@ import os, os.path
 
 
 
+debug = False
+
 def main():
     if len(sys.argv) < 3:
         print "gt2gpx.py dev dir"
@@ -14,14 +16,21 @@ def main():
     dev = sys.argv[1]
     destdir = sys.argv[2]
     
+    if destdir == "!purge":
+        dev = pygotu.GTDev(dev, debug = True)
+        dev.identify()
+        dev.purge_all()
+        sys.exit(0)
+    
     if not os.path.isdir(destdir):
         print "Dest", destdir, "is not directory."
         sys.exit(2)
 
-    dev = pygotu.GTDev(dev, debug = False)
+    dev = pygotu.GTDev(dev, debug = debug)
 
     dev.identify()
-
+    print "numData:", dev.count()
+    
     for track in dev.all_tracks():
         print "Importing:", track
         trackname = "Track {0.first_time:%Y/%m/%d %H:%M:%S}".format(track)

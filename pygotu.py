@@ -45,7 +45,11 @@ class GTDev:
         recv = self.read(3)
         if recv[0] != "\x93":
             raise Exception()
-        m, sz = unpack(">cH", recv)
+        m, sz = unpack(">ch", recv)
+        if sz < 0:
+            if self.debug:
+                print "Read Error:", sz
+                return None
         if self.debug:
             print "Reading", sz, "bytes..."
 
@@ -87,15 +91,82 @@ class GTDev:
             print "Num DP:", num, "(", n1, n2, ")"
         return num
 
-    def flash_read(self, pos = 0):
-        chpos = pack(">I", pos)        
+    def flash_read(self, pos = 0, size = 0x1000):
+        chpos = pack(">I", pos)     
+        chsz = pack(">H", size)   
         self.write_cmd(
-            "\x93\x05\x07\x10\x00\x04\x03" + chpos[1],
+            "\x93\x05\x07" + chsz + "\x04\x03" + chpos[1],
             chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
+    
+    def purge_all(self):
+        purge_flag = False
+        n_blocks = 0x700
+        
+        for i in range(n_blocks, 0, -1):
+            print "I=", i
+            if purge_flag:
+                while self.unk_write2(0x01) != chr(0x00):
+                    pass
+            else:
+                if self.flash_read(pos = (i * 0x1000), size = 0x10) != ("\xff" * 0x10):
+                    purge_flag = True
+                else:
+                    continue
+            self.unk_write1(0)
+            self.flash_write_purge(0x20, i * 0x1000)
+        if purge_flag:
+            self.unk_purge1(0x1e)
+            self.unk_purge1(0x1f)
+            while self.unk_write2(0x01) != chr(0x00):
+                pass
+        self.unk_purge1(0x1e)
+        self.unk_purge1(0x1f)
 
+    def flash_write_purge(self, w, pos):
+        chpos = pack(">I", pos)
+        
+        self.write_cmd(
+            "\x93\x06\x00\x00\x04" + chr(w) + "\x03" + chpos[1],
+            chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
+    
+    def unk_write1(self, p1):
+        self.write_cmd(
+            "\x93\x06\x04\x00" + chr(p1) + "\x01\x06\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
+
+    def unk_write2(self, p1):
+        p1ch = pack('>H', p1)
+        self.write_cmd(
+            "\x93\x05\x04" + p1ch + "\x01\x05\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
+
+    def unk_purge1(self, p1):
+        self.write_cmd(
+            "\x93\x0C\x00" + chr(p1) + "\x00\x00\x00\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
+
+    def unk_purge2(self, p1):
+        self.write_cmd(
+            "\x93\x08\x02" + chr(p1) + "\x00\x00\x00\x00",
+            "\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        buf = self.read_resp()
+        return buf
 
     def all_records(self):
         rpos = 0
