@@ -101,7 +101,7 @@ class GTDev:
         buf = self.read_resp()
         return buf
     
-    def purge_all(self):
+    def purge_all_120(self):
         purge_flag = False
         n_blocks = 0x700
         
@@ -116,7 +116,7 @@ class GTDev:
                 else:
                     continue
             self.unk_write1(0)
-            self.flash_write_purge(0x20, i * 0x1000)
+            self.flash_write_purge(i * 0x1000)
         if purge_flag:
             self.unk_purge1(0x1e)
             self.unk_purge1(0x1f)
@@ -125,11 +125,35 @@ class GTDev:
         self.unk_purge1(0x1e)
         self.unk_purge1(0x1f)
 
-    def flash_write_purge(self, w, pos):
-        chpos = pack(">I", pos)
+
+    def purge_all_gt900(self):
+        purge_flag = False
+        n_blocks = 0x700
         
+        for i in range(n_blocks-1, 0, -1):
+            print "I=", i
+            if not purge_flag:
+                print "NP"
+                if self.flash_read(pos = (i * 0x1000), size = 0x10) != ("\xff" * 0x10):
+                    print "pf = true"
+                    purge_flag = True
+                else:
+                    print "cont."
+                    continue
+            print "Writing"
+            self.unk_write1(0x00)
+            self.flash_write_purge(i * 0x1000)
+            print "UNKW2"
+            while self.unk_write2(0x01) != chr(0x00):
+                print "Waiting..."
+            print "Purged."
+
+
+    def flash_write_purge(self, pos):
+        chpos = pack(">I", pos)
+        w = 0x20
         self.write_cmd(
-            "\x93\x06\x00\x00\x04" + chr(w) + "\x03" + chpos[1],
+            "\x93\x06\x07\x00\x00\x04" + chr(w) + chpos[1],
             chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
@@ -231,6 +255,7 @@ class GTTrack:
 
 class GTRecord:
     def __init__(self, idx, s):
+        self.valid = True
         self.idx = idx
         self.s = s
         flag, ym, dhm, ms = unpack(">BBHH", self.s[0x00:0x06])
@@ -246,8 +271,13 @@ class GTRecord:
         self.sec = int(ms / 1000) % 60
         self.ms = ms % 1000
 
-        self.datetime = datetime.datetime(self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms)
-
+        try:
+            self.datetime = datetime.datetime(self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms)
+        except ValueError:
+            self.datetime = None
+            self.valid = False
+            print "InvalidDate:", (self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms)
+            
         self.msg = ""
 
         if flag == 0xF1:

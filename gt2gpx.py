@@ -5,6 +5,29 @@ import sys
 import os, os.path
 
 
+GPXDATA_START = """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:pygotu="http://www.sunaga-lab.net/pygotu" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" creator="pygotu" version="1.1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <trk>
+    <name>{trackname}</name>
+    <desc>pygotu imported track</desc>
+    <trkseg>
+"""
+
+GPXDATA_RECORD = """      <trkpt lat="{0.lat}" lon="{0.lon}">
+        <ele>{0.ele}</ele>
+        <time>{0.datetime:%Y-%m-%dT%H:%M:%SZ}</time>
+        <sat>{0.sat}</sat>
+        <desc>posdesc</desc>
+        <extensions>
+          <pygotu:course>{0.course}</pygotu:course>
+          <pygotu:speed>{0.speed}</pygotu:speed>
+          <pygotu:ehpe>{0.ehpe}</pygotu:ehpe>
+          <pygotu:elegps>{0.ele_gps}</pygotu:elegps>
+        </extensions>
+      </trkpt>
+"""
+
+GPXDATA_END = "    </trkseg>\n  </trk>\n</gpx>"
 
 debug = False
 
@@ -16,10 +39,10 @@ def main():
     dev = sys.argv[1]
     destdir = sys.argv[2]
     
-    if destdir == "!purge":
-        dev = pygotu.GTDev(dev, debug = True)
+    if destdir == "--purge":
+        dev = pygotu.GTDev(dev, debug = False)
         dev.identify()
-        dev.purge_all()
+        dev.purge_all_gt900()
         sys.exit(0)
     
     if not os.path.isdir(destdir):
@@ -36,31 +59,15 @@ def main():
         trackname = "Track {0.first_time:%Y/%m/%d %H:%M:%S}".format(track)
         fn = "gt-{0.first_time:%Y-%m-%dT%H-%M-%S}.gpx".format(track)
         with open(os.path.join(destdir, fn), "w") as f:
-            f.write("""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:pygotu="http://www.sunaga-lab.net/pygotu" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" creator="pygotu" version="1.1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-  <trk>
-    <name>{trackname}</name>
-    <desc>pygotu imported track</desc>
-    <trkseg>
-""".format(trackname = trackname))
+            f.write(GPXDATA_START.format(trackname = trackname))
             
             for rec in track.records:
-                data = """      <trkpt lat="{0.lat}" lon="{0.lon}">
-        <ele>{0.ele}</ele>
-        <time>{0.datetime:%Y-%m-%dT%H:%M:%SZ}</time>
-        <sat>{0.sat}</sat>
-        <desc>posdesc</desc>
-        <extensions>
-          <pygotu:course>{0.course}</pygotu:course>
-          <pygotu:speed>{0.speed}</pygotu:speed>
-          <pygotu:ehpe>{0.ehpe}</pygotu:ehpe>
-          <pygotu:elegps>{0.ele_gps}</pygotu:elegps>
-        </extensions>
-      </trkpt>
-""".format(rec)
+                if not rec.valid:
+                    continue
+                data = GPXDATA_RECORD.format(rec)
                 f.write(data)
 
-            f.write("    </trkseg>\n  </trk>\n</gpx>")
+            f.write(GPXDATA_END)
 
 
 
