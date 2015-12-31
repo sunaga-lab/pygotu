@@ -29,7 +29,7 @@ GPXDATA_RECORD = """      <trkpt lat="{0.lat}" lon="{0.lon}">
 
 GPXDATA_END = "    </trkseg>\n  </trk>\n</gpx>"
 
-debug = False
+debug = True
 
 def main():
     if len(sys.argv) < 3:
@@ -40,7 +40,7 @@ def main():
     destdir = sys.argv[2]
     
     if destdir == "--purge":
-        dev = pygotu.GTDev(dev, debug = False)
+        dev = pygotu.GTDev(dev, debug = debug)
         dev.identify()
         dev.purge_all_gt900()
         sys.exit(0)

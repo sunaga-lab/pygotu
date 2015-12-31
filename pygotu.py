@@ -8,8 +8,17 @@ from struct import pack, unpack
 
 devname = '/dev/ttyACM0'
 
+def ord_u(ch):
+    if isinstance(ch, str):
+        return ord(ch)
+    else:
+        return ch
+
+def chr_u(i):
+    return bytes([i])
+
 def hexdumps(s):
-    return " ".join("{:02X}".format(ord(ch)) for ch in s)
+    return " ".join("{:02X}".format(ord_u(ch)) for ch in s)
 
 
 
@@ -23,6 +32,8 @@ class GTDev:
     def write_cmd(self, cmd1, cmd2):
         assert len(cmd1) == 8
         assert len(cmd2) == 8
+        assert isinstance(cmd1, bytes)
+        assert isinstance(cmd2, bytes)
         cs = 0
         for ch in cmd1 + cmd2[:7]:
             cs += ord(ch) if isinstance(ch, str) else ch
@@ -31,8 +42,12 @@ class GTDev:
         if isinstance(cmd2, str):
             cmd2 = cmd2[:7] + chr(cs)
         else:
-            cms2 = cmd2[:7] + bytes(cs)
+            cmd2 = cmd2[:7] + bytes([cs])
+            print("CMS2:", cmd2, " bcs:", bytes([cs]))
         if self.debug:
+            print("CMS2 = ", cmd2)
+            print("CS = ", cs)
+            print("APPENDED = ", cmd1 + cmd2)
             print("Send1&2: ", hexdumps(cmd1 + cmd2))
         self.dev.write(cmd1 + cmd2)
         #print("Send2: ", hexdumps()cmd2)
@@ -68,8 +83,8 @@ class GTDev:
     def nmea_switch(self, mode):
         mch = ["\x00", "\x01", "\x02", "\x03"][mode]
         self.write_cmd(
-            "\x93\x01\x01" + mch + "\x00\x00\x00\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x01\x01" + mch + b"\x00\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         self.read(1)
 
@@ -87,8 +102,8 @@ class GTDev:
 
     def count(self):
         self.write_cmd(
-            "\x93\x0b\x03\x00\x1d\x00\x00\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x0b\x03\x00\x1d\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         n1, n2 = self.read_resp(fmt = "Hb")
         num = n1*256 + n2
@@ -98,10 +113,11 @@ class GTDev:
 
     def flash_read(self, pos = 0, size = 0x1000):
         chpos = pack(">I", pos)     
-        chsz = pack(">H", size)   
+        chsz = pack(">H", size) 
+        print("CH2: ", chpos[2:3] + b"\x00\x00\x00\x00\x00\x00")
         self.write_cmd(
-            "\x93\x05\x07" + chsz + "\x04\x03" + chpos[1],
-            chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
+            b"\x93\x05\x07" + chsz + b"\x04\x03" + chr_u(chpos[1]),
+            chpos[2:4] + b"\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
@@ -158,16 +174,16 @@ class GTDev:
         chpos = pack(">I", pos)
         w = 0x20
         self.write_cmd(
-            "\x93\x06\x07\x00\x00\x04" + chr(w) + chpos[1],
-            chpos[2] + chpos[3] + "\x00\x00\x00\x00\x00\x00"
+            b"\x93\x06\x07\x00\x00\x04" + chr_u(w) + chpos[1],
+            chpos[2] + chpos[3] + b"\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
     
     def unk_write1(self, p1):
         self.write_cmd(
-            "\x93\x06\x04\x00" + chr(p1) + "\x01\x06\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x06\x04\x00" + chr_u(p1) + b"\x01\x06\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
@@ -175,24 +191,24 @@ class GTDev:
     def unk_write2(self, p1):
         p1ch = pack('>H', p1)
         self.write_cmd(
-            "\x93\x05\x04" + p1ch + "\x01\x05\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x05\x04" + p1ch + b"\x01\x05\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
 
     def unk_purge1(self, p1):
         self.write_cmd(
-            "\x93\x0C\x00" + chr(p1) + "\x00\x00\x00\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x0C\x00" + chr_u(p1) + b"\x00\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
 
     def unk_purge2(self, p1):
         self.write_cmd(
-            "\x93\x08\x02" + chr(p1) + "\x00\x00\x00\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x08\x02" + chr_u(p1) + b"\x00\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
@@ -207,7 +223,7 @@ class GTDev:
         while True:
             rpos += 1
             buf = self.flash_read(rpos * 0x1000)
-            for i in range(len(buf) / RECSIZE):
+            for i in range(len(buf) // RECSIZE):
                 yield GTRecord(num_rec_read, buf[i*RECSIZE:(i+1)*RECSIZE])
                 num_rec_read += 1
                 if num_rec_read >= num_rec_all:
@@ -326,7 +342,7 @@ class GTRecord:
 
     def parse_device_log(self):
         self.kind = "LOG"
-        self.msg = self.s[0x06:0x1e].replace('\x00', '').strip()
+        self.msg = self.s[0x06:0x1e].decode('UTF-8').replace('\x00', '').strip()
         self.desc = "LOG {0.msg}".format(self)
 
     def parse_unknown(self):
