@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 import sys, os, time
 import serial
@@ -25,36 +25,41 @@ class GTDev:
         assert len(cmd2) == 8
         cs = 0
         for ch in cmd1 + cmd2[:7]:
-            cs += ord(ch)
+            cs += ord(ch) if isinstance(ch, str) else ch
         cs = cs & 0xff
         cs = ((cs^0xff) + 0x01) & 0xff
-        cmd2 = cmd2[:7] + chr(cs)
+        if isinstance(cmd2, str):
+            cmd2 = cmd2[:7] + chr(cs)
+        else:
+            cms2 = cmd2[:7] + bytes(cs)
         if self.debug:
-            print "Send1&2: ", hexdumps(cmd1 + cmd2)
+            print("Send1&2: ", hexdumps(cmd1 + cmd2))
         self.dev.write(cmd1 + cmd2)
-        #print "Send2: ", hexdumps(cmd2)
+        #print("Send2: ", hexdumps()cmd2)
         #self.dev.write(cmd2)
 
     def read(self, sz):
         result = self.dev.read(sz)
         if self.debug:
-            print "Read: ", hexdumps(result)
+            print("Read: ", hexdumps(result))
         return result
 
     def read_resp(self, fmt = None):
         recv = self.read(3)
-        if recv[0] != "\x93":
+        print("Receuved: ", recv, " and[0]:", recv[0])
+        if recv[0] != "\x93" and recv[0] != 0x93:
             raise Exception()
         m, sz = unpack(">ch", recv)
         if sz < 0:
             if self.debug:
-                print "Read Error:", sz
-                return None
+                print("Read Error:", sz)
+            raise Exception("Read Error")
         if self.debug:
-            print "Reading", sz, "bytes..."
+            print("Reading", sz, "bytes...")
 
         resp = self.read(sz)
         if fmt:
+            print("resp:", resp, "sz:",sz)
             return unpack(">" + fmt, resp)
         else:
             return resp
@@ -70,15 +75,15 @@ class GTDev:
 
     def identify(self):
         self.write_cmd(
-            "\x93\x0a\x00\x00\x00\x00\x00\x00",
-            "\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x93\x0a\x00\x00\x00\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00"
         )
         serial, v_maj, v_min, model, v_lib = self.read_resp(fmt = "IbbHH")
         if self.debug:
-            print "Serial:", serial
-            print "Ver:", v_maj, v_min
-            print "Model:", model
-            print "USBlib:", v_lib
+            print("Serial:", serial)
+            print("Ver:", v_maj, v_min)
+            print("Model:", model)
+            print("USBlib:", v_lib)
 
     def count(self):
         self.write_cmd(
@@ -88,7 +93,7 @@ class GTDev:
         n1, n2 = self.read_resp(fmt = "Hb")
         num = n1*256 + n2
         if self.debug:
-            print "Num DP:", num, "(", n1, n2, ")"
+            print("Num DP:", num, "(", n1, n2, ")")
         return num
 
     def flash_read(self, pos = 0, size = 0x1000):
@@ -106,7 +111,7 @@ class GTDev:
         n_blocks = 0x700
         
         for i in range(n_blocks, 0, -1):
-            print "I=", i
+            print("I=", i)
             if purge_flag:
                 while self.unk_write2(0x01) != chr(0x00):
                     pass
@@ -131,22 +136,22 @@ class GTDev:
         n_blocks = 0x700
         
         for i in range(n_blocks-1, 0, -1):
-            print "I=", i
+            print("I=", i)
             if not purge_flag:
-                print "NP"
+                print("NP")
                 if self.flash_read(pos = (i * 0x1000), size = 0x10) != ("\xff" * 0x10):
-                    print "pf = true"
+                    print("pf = true")
                     purge_flag = True
                 else:
-                    print "cont."
+                    print("cont.")
                     continue
-            print "Writing"
+            print("Writing")
             self.unk_write1(0x00)
             self.flash_write_purge(i * 0x1000)
-            print "UNKW2"
+            print("UNKW2")
             while self.unk_write2(0x01) != chr(0x00):
-                print "Waiting..."
-            print "Purged."
+                print("Waiting...")
+            print("Purged.")
 
 
     def flash_write_purge(self, pos):
@@ -206,9 +211,9 @@ class GTDev:
                 yield GTRecord(num_rec_read, buf[i*RECSIZE:(i+1)*RECSIZE])
                 num_rec_read += 1
                 if num_rec_read >= num_rec_all:
-                    if self.debug: print "End by count:", num_rec_all
+                    if self.debug: print("End by count:", num_rec_all)
                     return
-            if self.debug: print "End RECLOOP"
+            if self.debug: print("End RECLOOP")
 
     def all_tracks(self):
         idx = 0
@@ -276,7 +281,7 @@ class GTRecord:
         except ValueError:
             self.datetime = None
             self.valid = False
-            print "InvalidDate:", (self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms)
+            print("InvalidDate:", (self.year, self.month, self.day, self.hour, self.minutes, self.sec, self.ms))
             
         self.msg = ""
 
@@ -332,16 +337,16 @@ class GTRecord:
         return "{0.datetime:%Y/%m/%d %H:%M:%S} {0.desc}".format(self)
 
 def test():
-    dev = GTDev(devname, debug = False)
+    dev = GTDev(devname, debug = True)
 
     dev.identify()
     n = dev.count()
  
     #for track in dev.all_tracks():
-    #    print track
+    #    print(track)
 
     for rec in dev.all_records():
-        print "- ", rec.idx, "/", n, ":", rec
+        print("- ", rec.idx, "/", n, ":", rec)
 
 def main():
     test()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import pygotu
 import sys
@@ -33,7 +33,7 @@ debug = False
 
 def main():
     if len(sys.argv) < 3:
-        print "gt2gpx.py dev dir"
+        print("gt2gpx.py dev dir")
         sys.exit(1)
     
     dev = sys.argv[1]
@@ -46,16 +46,16 @@ def main():
         sys.exit(0)
     
     if not os.path.isdir(destdir):
-        print "Dest", destdir, "is not directory."
+        print("Dest", destdir, "is not directory.")
         sys.exit(2)
 
     dev = pygotu.GTDev(dev, debug = debug)
 
     dev.identify()
-    print "numData:", dev.count()
+    print("numData:", dev.count())
     
     for track in dev.all_tracks():
-        print "Importing:", track
+        print("Importing:", track)
         trackname = "Track {0.first_time:%Y/%m/%d %H:%M:%S}".format(track)
         fn = "gt-{0.first_time:%Y-%m-%dT%H-%M-%S}.gpx".format(track)
         with open(os.path.join(destdir, fn), "w") as f:
