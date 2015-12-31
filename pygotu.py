@@ -314,13 +314,18 @@ class GTRecord:
     
     def parse_waypoint(self):
         self.kind = "WP"
-        (ae, self.r_ele_p, self.r_lat, self.r_lon, self.r_ele_gps, self.r_speed, self.r_course, self.f2) = unpack(">HiIIiHHH", self.s[0x06:0x1e])
+        (ae, self.r_ele_p, self.r_lat, self.r_lon, self.r_ele_gps, self.r_speed, self.r_course, self.f2) = unpack(">HiiiiHHH", self.s[0x06:0x1e])
         
         self.unk1 = (ae >> 12)
         self.ehpe = (ae & 0b0000111111111111) / 10.0 # in m
 
         self.lon = self.r_lon / 10000000.0 # 
         self.lat = self.r_lat / 10000000.0 #
+        if abs(self.lat) > 180:
+            print("lat:", self.lat)
+            print("lon:", self.lon)
+            print("r_lat:", self.r_lat)
+            raise Exception("Invalid lat")
         self.ele = self.r_ele_p / 100.0 # in m
         self.ele_gps = self.r_ele_gps / 100.0 # in m
         self.speed = (self.r_speed / 100.0) / 1000.0 * 3600.0 # km/h
