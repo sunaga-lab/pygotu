@@ -29,7 +29,7 @@ GPXDATA_RECORD = """      <trkpt lat="{0.lat}" lon="{0.lon}">
 
 GPXDATA_END = "    </trkseg>\n  </trk>\n</gpx>"
 
-debug = True
+debug = False
 
 def main():
     if len(sys.argv) < 3:
