@@ -114,7 +114,6 @@ class GTDev:
     def flash_read(self, pos = 0, size = 0x1000):
         chpos = pack(">I", pos)     
         chsz = pack(">H", size) 
-        print("CH2: ", chpos[2:3] + b"\x00\x00\x00\x00\x00\x00")
         self.write_cmd(
             b"\x93\x05\x07" + chsz + b"\x04\x03" + chr_u(chpos[1]),
             chpos[2:4] + b"\x00\x00\x00\x00\x00\x00"
@@ -174,8 +173,8 @@ class GTDev:
         chpos = pack(">I", pos)
         w = 0x20
         self.write_cmd(
-            b"\x93\x06\x07\x00\x00\x04" + chr_u(w) + chpos[1],
-            chpos[2] + chpos[3] + b"\x00\x00\x00\x00\x00\x00"
+            b"\x93\x06\x07\x00\x00\x04" + chr_u(w) + chpos[1:2],
+            chpos[2:4] + b"\x00\x00\x00\x00\x00\x00"
         )
         buf = self.read_resp()
         return buf
